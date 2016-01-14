@@ -228,9 +228,7 @@ class account_consolidation_base(orm.AbstractModel):
         res = {}
         account_ids = account_obj._get_children_and_consol(
                 cr, 1, chart_account_id, context=context)
-        # if chart_account_id != 5680:
-        #     import pdb
-        #     pdb.set_trace()
+
         # do not consolidate chart root
         #account_ids.remove(chart_account_id)
 

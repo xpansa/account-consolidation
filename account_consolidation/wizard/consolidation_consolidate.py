@@ -292,8 +292,7 @@ class account_consolidation_consolidate(orm.TransientModel):
                 'debit': currency_value if currency_value > 0.0 else 0.0,
                 'credit': abs(currency_value) if currency_value < 0.0 else 0.0,
             })
-        import pdb
-        pdb.set_trace()
+
         return move_line_obj.create(cr, uid, vals, context=context)
 
     def reverse_moves(self, cr, uid, ids, subsidiary_id, journal_id,
