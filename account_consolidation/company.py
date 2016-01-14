@@ -38,4 +38,5 @@ class res_company(orm.Model):
                                                     domain=[('type', '=', 'other')],
                                                     help=("Conso. differences will be affected"
                                                           " to this account"))
+                
                 }

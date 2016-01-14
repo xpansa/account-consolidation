@@ -129,6 +129,7 @@ class account_consolidation_base(orm.AbstractModel):
                 cr, uid, holding_periods_ids, context=context)
 
         # get subsidiary fiscal year and periods
+
         subsidiary_fiscal_year = fy_obj.search(
             cr, uid,
             [('company_id', '=', subsidiary.id),
@@ -226,12 +227,14 @@ class account_consolidation_base(orm.AbstractModel):
         account_obj = self.pool.get('account.account')
         res = {}
         account_ids = account_obj._get_children_and_consol(
-                cr, uid, chart_account_id, context=context)
-
+                cr, 1, chart_account_id, context=context)
+        # if chart_account_id != 5680:
+        #     import pdb
+        #     pdb.set_trace()
         # do not consolidate chart root
-        account_ids.remove(chart_account_id)
+        #account_ids.remove(chart_account_id)
 
-        for account in account_obj.browse(cr, uid, account_ids, context):
+        for account in account_obj.browse(cr, 1, account_ids, context):
             holding = context.get('holding_coa', False)
 
             # do not consolidate to view accounts
@@ -239,13 +242,23 @@ class account_consolidation_base(orm.AbstractModel):
                 continue
 
             # only consolidate the consolidation accounts
-            if not holding and account.type != 'consolidation':
-                continue
+            #if not holding and account.type != 'consolidation':
+            #    continue
+            if holding and account.type == 'consolidation':
+                acc_ids = []
+                sub_ids = account_obj._get_children_and_consol(
+                cr, 1, account.id, context=context)
+                sub_ids.remove(account.id)
+                for sub_id in sub_ids:
+                    sub = account_obj.browse(cr, 1, sub_id, context)
+                    if sub.type == 'regular':
+                        acc_ids.append(sub.id)
+                res[account] = sub_ids
 
-            res[account.code] = {}
+            #res[account.code] = {}
             # we'll need the browse object during the
             # "consolidate wizard" for the holding
-            res[account.code] = account if holding else True
+            #res[account.code] = account  # if holding else True
 
         return res
 
@@ -276,6 +289,8 @@ class account_consolidation_base(orm.AbstractModel):
 
     def _check_subsidiary_mapping_account(self, cr, uid, ids,
                                           company_id, context=None):
+        # This gives how many times, a certain account is mapped
+        # but is not needed for us
         if context is None:
             context = {}
         errors = []
@@ -290,10 +305,12 @@ class account_consolidation_base(orm.AbstractModel):
                  ('type', '=', 'consolidation')],
                 context=context)
         consolidate_child_ids = []
+
         for account_id in consolidated_account_ids:
             child_consol_ids = account_obj._get_children_and_consol(
                 cr, uid, account_id, context=context)
             consolidate_child_ids = consolidate_child_ids + child_consol_ids
+
         for sub_id in normal_account_ids:
             cpt_occur = consolidate_child_ids.count(sub_id)
             if cpt_occur == 0 or cpt_occur > 1:
@@ -371,17 +388,20 @@ class account_consolidation_base(orm.AbstractModel):
             ids = [ids]
         assert len(ids) == 1, "only 1 id expected"
 
-        if self.check_all_periods(cr, uid, ids, context=context):
+        if self.check_all_periods(cr, 1, ids, context=context):
             raise osv.except_osv(
                 _('Error'),
                 _('Invalid periods, please launch the '
                   '"Consolidation: Checks" wizard'))
-        if self.check_account_charts(cr, uid, ids, context=context):
+        
+        # COMMENTED
+        '''
+        if self.check_account_charts(cr, 1, ids, context=context):
             raise osv.except_osv(
                 _('Error'),
                 _('Invalid charts, please launch the '
                   '"Consolidation: Checks" wizard'))
-
+        '''
         # inherit to add the next steps of the reconciliation
 
         return {'type': 'ir.actions.act_window_close'}

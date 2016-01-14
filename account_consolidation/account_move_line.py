@@ -25,6 +25,20 @@ from openerp.osv import orm, fields
 class AccountMoveLine(orm.Model):
     _inherit = 'account.move.line'
 
+    def _check_no_view(self, cr, uid, ids, context=None):
+        lines = self.browse(cr, uid, ids, context=context)
+
+        for ll in lines:
+            consolidation = ll.is_consolidation
+            if not consolidation:
+                if ll.account_id.type in ('view', 'consolidation'):
+                    return False
+            else:
+                if ll.account_id.type == 'view':
+                    return False
+
+        return True
+
     def _current_company(self, cursor, uid, ids, name, args, context=None):
         company_id = self.pool['res.company']._company_default_get(cursor, uid)
         curr_ids = self.search(cursor, uid, [('company_id', '=', company_id),
@@ -32,21 +46,30 @@ class AccountMoveLine(orm.Model):
         res = dict([(tid, tid in curr_ids) for tid in ids])
         return res
 
-
-    def search_is_current_company(self, cursor, uid, obj, name, args, context=None):
+    def search_is_current_company(
+            self, cursor, uid, obj, name, args, context=None):
         company_id = self.pool['res.company']._company_default_get(cursor, uid)
         res = self.search(cursor, uid, [('company_id', '=', company_id)])
         return [('id', 'in', res)]
 
-    _columns = {'consol_company_id': fields.related('move_id', 'consol_company_id',
-                                                    relation='res.company',
-                                                    type="many2one",
-                                                    string='Subsidaries',
-                                                    store=True,  # for the group_by
-                                                    readonly=True),
+    _columns = {
+        'consol_company_id': fields.related(
+            'move_id', 'consol_company_id',
+            relation='res.company',
+            type="many2one",
+            string='Subsidaries',
+            store=True,  # for the group_by
+            readonly=True),
 
-                'is_current_company': fields.function(_current_company,
-                                                      string="Current company",
-                                                      type="boolean",
-                                                      fnct_search=search_is_current_company)
-                }
+        'is_current_company': fields.function(
+            _current_company,
+            string="Current company",
+            type="boolean",
+            fnct_search=search_is_current_company),
+        'is_consolidation': fields.boolean('Is Consolidation')
+    }
+
+    _constraints = [
+        (_check_no_view, 'You cannot create journal items \
+            on an account of type view or consolidation.', ['account_id']),
+    ]

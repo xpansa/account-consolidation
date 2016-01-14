@@ -68,5 +68,5 @@ project
           ],
 
  "active": False,
- 'installable': False,
+ 'installable': True,
  }
