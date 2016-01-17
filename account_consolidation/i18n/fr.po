@@ -15,10 +15,6 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: \n"
 
-#. module: account_consolidation
-#: help:account.account,consolidation_rate_type_id:0
-msgid "Currency rate type used on this account for the consolidation. Leave empty to use the rate type of the account type."
-msgstr "Type du taux de devise utilisé sur ce compte pour la consolidation. Laissez vide pour utiliser le type de devise indiqué au niveau du type de compte"
 
 #. module: account_consolidation
 #: help:account.consolidation.consolidate,from_period_id:0
@@ -442,11 +438,6 @@ msgid "Consolidation user"
 msgstr "Utilisateur"
 
 #. module: account_consolidation
-#: help:account.account.type,consolidation_rate_type_id:0
-msgid "Currency rate type used on this account type for the consolidation. Leave empty to use the 'spot' rate type."
-msgstr "Type de devise utilisé pour la consolidation de ce type de compte. Laisser vide pour utiliser le taux par défaut "
-
-#. module: account_consolidation
 #: view:account.consolidation.consolidate:0
 msgid "Holding Chart of Accounts"
 msgstr "Plan comptable Holding"
@@ -462,12 +453,6 @@ msgstr "Annuler"
 #, python-format
 msgid "All account is mapped"
 msgstr "Tout les comptes sont bien liés à des comptes consolidés"
-
-#. module: account_consolidation
-#: field:account.account,consolidation_rate_type_id:0
-#: field:account.account.type,consolidation_rate_type_id:0
-msgid "Consolidation Currency Rate Type"
-msgstr "Type de taux de devise utilisé pour la consolidation"
 
 #. module: account_consolidation
 #: field:account.consolidation.consolidate,journal_id:0

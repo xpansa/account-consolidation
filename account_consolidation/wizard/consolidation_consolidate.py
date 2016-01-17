@@ -122,14 +122,7 @@ class account_consolidation_consolidate(orm.TransientModel):
 
         :return: id of the currency rate type to use
         """
-        if account.consolidation_rate_type_id:
-            return account.consolidation_rate_type_id.id
-
-        elif account.user_type.consolidation_rate_type_id:
-            return account.user_type.consolidation_rate_type_id.id
-
-        else:
-            return False
+        return False
 
     def _consolidation_mode(self, cr, uid, ids, account, context=None):
         """
