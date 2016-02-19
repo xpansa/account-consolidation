@@ -242,13 +242,17 @@ class account_consolidation_consolidate(orm.TransientModel):
 
         browse_ctx = dict(context, state=state, periods=subsidiary_period_ids)
         # 1st item because the account's code is unique per company
+        consol_ids = [a.id for a in account.child_consol_ids]
+        if not consol_ids:
+            return False
+
         subs_account = account_obj.browse(
-            cr, uid, account,
+            cr, uid, consol_ids,
             context=browse_ctx)
 
         vals = {
             'name': _("Consolidation line in %s mode") % consolidation_mode,
-            'account_id': holding_account.id,
+            'account_id': account.id,
             'move_id': move.id,
             'journal_id': move.journal_id.id,
             'period_id': move.period_id.id,
@@ -257,9 +261,17 @@ class account_consolidation_consolidate(orm.TransientModel):
             'is_consolidation': True,
         }
 
-        balance = subs_account.balance
+        balance = sum([a.balance for a in subs_account])
+
         if not balance:
             return False
+        vals.update({
+            'debit': balance if balance > 0.0 else 0.0,
+            'credit': abs(balance) if balance < 0.0 else 0.0,
+        })
+        return move_line_obj.create(cr, uid, vals, context=context)
+
+        '''
         if (holding_account.company_currency_id.id ==
                 subs_account.company_currency_id.id):
             vals.update({
@@ -287,6 +299,7 @@ class account_consolidation_consolidate(orm.TransientModel):
             })
 
         return move_line_obj.create(cr, uid, vals, context=context)
+        '''
 
     def reverse_moves(self, cr, uid, ids, subsidiary_id, journal_id,
                       reversal_date, context=None):
@@ -428,7 +441,9 @@ class account_consolidation_consolidate(orm.TransientModel):
 
                 # create a move line per account
                 has_move_line = False
-                for account in holding_accounts_data.get(accounts[0]):
+
+                #for account in holding_accounts_data.get(accounts[0]):
+                for account in accounts:
                     m_id = self.consolidate_account(
                         cr, uid, ids,
                         consolidation_mode,
