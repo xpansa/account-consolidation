@@ -246,10 +246,12 @@ class account_consolidation_consolidate(orm.TransientModel):
         if not consol_ids:
             return False
 
+        #subs_account = account_obj.browse(
+        #    cr, uid, consol_ids,
+        #    context=browse_ctx)
         subs_account = account_obj.browse(
-            cr, uid, consol_ids,
+            cr, uid, account.id,
             context=browse_ctx)
-
         vals = {
             'name': _("Consolidation line in %s mode") % consolidation_mode,
             'account_id': account.id,
@@ -350,6 +352,7 @@ class account_consolidation_consolidate(orm.TransientModel):
 
         company_obj = self.pool.get('res.company')
         move_obj = self.pool.get('account.move')
+        move_line_obj = self.pool.get('account.move.line')
         period_obj = self.pool.get('account.period')
 
         form = self.browse(cr, uid, ids[0], context=context)
@@ -362,114 +365,87 @@ class account_consolidation_consolidate(orm.TransientModel):
             form.holding_chart_account_id.id,
             context=data_ctx)
 
-        # split accounts in ytd and periods modes
-        # a move per type will be created
-        consolidation_modes = {'ytd': [], 'period': []}
+        #### FROM HERE
+        reversed_ids = list()
+        reversed_ids = move_obj.search(
+            cr, uid,
+            [
+                ('journal_id', '=', form.journal_id.id),
+                ('period_id', '=', form.to_period_id.id)],
+            context=context)
 
-        for account in holding_accounts_data:
-            cm = self._consolidation_mode(
-                cr, uid, ids, account, context=context)
-            consolidation_modes[cm].append(account)
+        move_obj.unlink(cr, uid, reversed_ids, context=context)
 
         period_ids = period_obj.build_ctx_periods(
             cr, uid,
             form.from_period_id.id,
             form.to_period_id.id)
 
+        period_ids = ','.join([str(p) for p in period_ids])
+        account_ids = ','.join([str(a.id) for a in holding_accounts_data])
+
+        if not account_ids or not period_ids:
+            return [], []
+        sql = " SELECT child_id, \
+                Sum(balance) \
+            FROM   (SELECT rel.child_id, \
+                           bal.account_id, \
+                           bal.balance \
+                    FROM   (SELECT account_id, \
+                           COALESCE(Sum(l.debit), 0) - \
+                           COALESCE(Sum(l.credit), 0) AS \
+                           balance \
+                    FROM   account_move_line l \
+                    WHERE  period_id IN ( %s ) \
+                           AND account_id IN (SELECT parent_id \
+                                        FROM   account_account_consol_rel \
+                                        WHERE  child_id IN ( %s )) \
+                    GROUP  BY 1) AS bal \
+                   LEFT OUTER JOIN account_account_consol_rel rel \
+                                ON rel.parent_id = bal.account_id) AS final \
+            GROUP  BY child_id " % (period_ids, account_ids)
+
         generic_move_vals = {
             'journal_id': form.journal_id.id,
             'company_id': form.company_id.id,
             'consol_company_id': subsidiary.id,
+            'period_id': form.to_period_id.id,
+            'ref': 'Consolidation'
         }
 
-        ytd_move_ids = []
-        period_move_ids = []
+        move_id = move_obj.create(cr, uid, generic_move_vals, context=context)
 
-        for consolidation_mode, accounts in consolidation_modes.iteritems():
-            if not accounts:
-                continue
+        cr.execute(sql)
 
-            # get list of periods for which we have to create a move
-            # in period mode : a move per period
-            # in ytd mode : a move at the last period
-            # (which will contains lines from 1st january to last period)
-            move_period_ids = (
-                period_ids if consolidation_mode == 'period'
-                else [form.to_period_id.id])
+        counter = 0
+        for row in cr.dictfetchall():
+            counter += 1
+            vals = {
+                'name': 'line no: %s' % counter,
+                'account_id': row['child_id'],
+                'move_id': move_id,
+                'journal_id': form.journal_id.id,
+                'period_id': form.to_period_id.id,
+                'company_id': form.company_id.id,
+                'date': form.to_period_id.date_stop,
+                'is_consolidation': True,
+            }
 
-            for move_period_id in move_period_ids:
-                period = period_obj.browse(
-                    cr, uid, move_period_id, context=context)
+            vals.update({
+                'debit': row['sum'] if row['sum'] > 0.0 else 0.0,
+                'credit': abs(row['sum']) if row['sum'] < 0.0 else 0.0,
+            })
 
-                # in ytd we compute the amount from the first
-                # day of the fiscal year
-                # in period, only for the period
-                if consolidation_mode == 'ytd':
-                    date_from = period.fiscalyear_id.date_start
-                else:
-                    date_from = period.date_start
-                date_to = period.date_stop
+            move_line_obj.create(cr, uid, vals, context=context)
 
-                period_ctx = dict(context, company_id=subsidiary.id)
-                compute_from_period_id = period_obj.find(
-                    cr, uid, date_from, context=period_ctx)[0]
-                compute_to_period_id = period_obj.find(
-                    cr, uid, date_to, context=period_ctx)[0]
-                compute_period_ids = period_obj.build_ctx_periods(
-                    cr, uid,
-                    compute_from_period_id,
-                    compute_to_period_id)
+        if counter != 0:
+            self.create_rate_difference_line(
+                cr, uid, ids,
+                move_id, 'ytd', context=context)
+        else:
+            move_obj.unlink(cr, uid, move_id, context=context)
 
-                # reverse previous entries with flag 'to_be_reversed' (YTD)
-                self.reverse_moves(
-                    cr, uid,
-                    ids,
-                    subsidiary.id,
-                    form.journal_id.id,
-                    date_to,
-                    context=context)
-
-                # create the account move
-                # at the very last date of the end period
-                move_vals = dict(
-                    generic_move_vals,
-                    ref=_("Consolidation %s") % consolidation_mode,
-                    period_id=period.id,
-                    date=period.date_stop)
-
-                move_id = move_obj.create(cr, uid, move_vals, context=context)
-
-                # create a move line per account
-                has_move_line = False
-
-                #for account in holding_accounts_data.get(accounts[0]):
-                for account in accounts:
-                    m_id = self.consolidate_account(
-                        cr, uid, ids,
-                        consolidation_mode,
-                        compute_period_ids,
-                        form.target_move,
-                        move_id,
-                        accounts[0],
-                        subsidiary.id, account,
-                        context=context)
-                    if m_id:
-                        has_move_line = True
-
-                if has_move_line:
-                    self.create_rate_difference_line(
-                        cr, uid, ids,
-                        move_id, consolidation_mode, context=context)
-                    locals()[consolidation_mode + '_move_ids'].append(move_id)
-                else:
-                    # We delete created move if it has no line.
-                    # As move are generated in draft mode they will be no gap in
-                    # number if consolidation journal has correct settings.
-                    # I agree it can be more efficient but size of refactoring
-                    # is not in ressource scope
-                    move_obj.unlink(cr, uid, [move_id])
-
-        return ytd_move_ids, period_move_ids
+        return [move_id], [move_id]
 
     def run_consolidation(self, cr, uid, ids, context=None):
         """
