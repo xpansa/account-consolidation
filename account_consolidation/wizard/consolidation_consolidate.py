@@ -359,7 +359,7 @@ class account_consolidation_consolidate(orm.TransientModel):
         subsidiary = company_obj.browse(cr, uid, subsidiary_id, context=None)
 
         data_ctx = dict(context, holding_coa=True)
-        holding_accounts_data = self._chart_accounts_data(
+        holding_consol_ids = self._chart_accounts_data(
             cr, uid,
             ids,
             form.holding_chart_account_id.id,
@@ -381,7 +381,7 @@ class account_consolidation_consolidate(orm.TransientModel):
             form.to_period_id.id)
 
         period_ids = ','.join([str(p) for p in period_ids])
-        account_ids = ','.join([str(a.id) for a in holding_accounts_data])
+        consol_ids = ','.join(str(a) for a in holding_consol_ids)
 
         only_posted = ''
         target_move = form.target_move
@@ -389,7 +389,7 @@ class account_consolidation_consolidate(orm.TransientModel):
             only_posted = " and move_id in  \
             (select id from account_move where state = '%s') " % target_move
 
-        if not account_ids or not period_ids:
+        if not consol_ids or not period_ids:
             return [], []
         sql = " SELECT child_id, \
                 Sum(balance) \
@@ -409,7 +409,7 @@ class account_consolidation_consolidate(orm.TransientModel):
                     GROUP  BY 1) AS bal \
                    LEFT OUTER JOIN account_account_consol_rel rel \
                                 ON rel.parent_id = bal.account_id) AS final \
-            GROUP  BY child_id " % (period_ids, account_ids, only_posted)
+            GROUP  BY child_id " % (period_ids, consol_ids, only_posted)
 
         generic_move_vals = {
             'journal_id': form.journal_id.id,

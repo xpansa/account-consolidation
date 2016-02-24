@@ -225,38 +225,21 @@ class account_consolidation_base(orm.AbstractModel):
         if context is None:
             context = {}
         account_obj = self.pool.get('account.account')
-        res = {}
+        res = list()
         account_ids = account_obj._get_children_and_consol(
-                cr, 1, chart_account_id, context=context)
+            cr, uid, chart_account_id, context=context)
 
-        # do not consolidate chart root
-        #account_ids.remove(chart_account_id)
+        holding = context.get('holding_coa', False)
 
-        for account in account_obj.browse(cr, 1, account_ids, context):
-            holding = context.get('holding_coa', False)
-
+        for account in account_obj.read(
+                cr, uid, account_ids, ['id', 'type'], context):
             # do not consolidate to view accounts
-            if holding and account.type == 'view':
+
+            if holding and account.get('type', False) == 'view':
                 continue
 
-            # only consolidate the consolidation accounts
-            #if not holding and account.type != 'consolidation':
-            #    continue
-            if holding and account.type == 'consolidation':
-                acc_ids = []
-                sub_ids = account_obj._get_children_and_consol(
-                cr, 1, account.id, context=context)
-                sub_ids.remove(account.id)
-                for sub_id in sub_ids:
-                    sub = account_obj.browse(cr, 1, sub_id, context)
-                    if sub.type == 'regular':
-                        acc_ids.append(sub.id)
-                res[account] = sub_ids
-
-            #res[account.code] = {}
-            # we'll need the browse object during the
-            # "consolidate wizard" for the holding
-            #res[account.code] = account  # if holding else True
+            if holding and account.get('type', False) == 'consolidation':
+                res.append(account.get('id'))
 
         return res
 
