@@ -369,8 +369,7 @@ class account_consolidation_consolidate(orm.TransientModel):
         reversed_ids = move_obj.search(
             cr, uid,
             [
-                ('journal_id', '=', form.journal_id.id),
-                ('period_id', '=', form.to_period_id.id)],
+                ('journal_id', '=', form.journal_id.id)],
             context=context)
 
         move_obj.button_cancel(cr, uid, reversed_ids, context=context)
