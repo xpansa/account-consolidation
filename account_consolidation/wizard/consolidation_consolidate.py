@@ -365,7 +365,6 @@ class account_consolidation_consolidate(orm.TransientModel):
             form.holding_chart_account_id.id,
             context=data_ctx)
 
-        #### FROM HERE
         reversed_ids = list()
         reversed_ids = move_obj.search(
             cr, uid,
@@ -374,6 +373,7 @@ class account_consolidation_consolidate(orm.TransientModel):
                 ('period_id', '=', form.to_period_id.id)],
             context=context)
 
+        move_obj.button_cancel(cr, uid, reversed_ids, context=context)
         move_obj.unlink(cr, uid, reversed_ids, context=context)
 
         period_ids = period_obj.build_ctx_periods(
@@ -383,6 +383,12 @@ class account_consolidation_consolidate(orm.TransientModel):
 
         period_ids = ','.join([str(p) for p in period_ids])
         account_ids = ','.join([str(a.id) for a in holding_accounts_data])
+
+        only_posted = ''
+        target_move = form.target_move
+        if target_move != 'all':
+            only_posted = " and move_id in  \
+            (select id from account_move where state = '%s') " % target_move
 
         if not account_ids or not period_ids:
             return [], []
@@ -400,10 +406,11 @@ class account_consolidation_consolidate(orm.TransientModel):
                            AND account_id IN (SELECT parent_id \
                                         FROM   account_account_consol_rel \
                                         WHERE  child_id IN ( %s )) \
+                           %s \
                     GROUP  BY 1) AS bal \
                    LEFT OUTER JOIN account_account_consol_rel rel \
                                 ON rel.parent_id = bal.account_id) AS final \
-            GROUP  BY child_id " % (period_ids, account_ids)
+            GROUP  BY child_id " % (period_ids, account_ids, only_posted)
 
         generic_move_vals = {
             'journal_id': form.journal_id.id,
