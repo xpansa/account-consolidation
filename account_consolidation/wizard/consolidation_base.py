@@ -232,13 +232,14 @@ class account_consolidation_base(orm.AbstractModel):
         holding = context.get('holding_coa', False)
 
         for account in account_obj.read(
-                cr, uid, account_ids, ['id', 'type'], context):
+                cr, uid, account_ids, ['id', 'type', 'company_id'], context):
             # do not consolidate to view accounts
 
             if holding and account.get('type', False) == 'view':
                 continue
 
             if holding and account.get('type', False) == 'consolidation':
+
                 res.append(account.get('id'))
 
         return res
@@ -374,7 +375,7 @@ class account_consolidation_base(orm.AbstractModel):
                 _('Error'),
                 _('Invalid periods, please launch the '
                   '"Consolidation: Checks" wizard'))
-        
+
         # COMMENTED
         '''
         if self.check_account_charts(cr, 1, ids, context=context):

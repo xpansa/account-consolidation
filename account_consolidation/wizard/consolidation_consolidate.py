@@ -329,15 +329,11 @@ class account_consolidation_consolidate(orm.TransientModel):
         move_obj.unlink(cr, uid, reversed_ids, context=context)
         return
 
-    def consolidate_subsidiary(self, cr, uid, ids,
-                               subsidiary_id, context=None):
+    def consolidate(self, cr, uid, ids, context=None):
         """
         Consolidate one subsidiary on the Holding.
         Create a move per subsidiary and consolidation type (YTD/Period)
         and an move line per account of the subsidiary
-
-        :param subsidiary_id: ID of the subsidiary to consolidate
-                              on the holding
 
         :return: Tuple of form:
                  (list of IDs of the YTD moves,
@@ -350,15 +346,16 @@ class account_consolidation_consolidate(orm.TransientModel):
             ids = [ids]
         assert len(ids) == 1, "only 1 id expected"
 
-        company_obj = self.pool.get('res.company')
         move_obj = self.pool.get('account.move')
         move_line_obj = self.pool.get('account.move.line')
         period_obj = self.pool.get('account.period')
 
         form = self.browse(cr, uid, ids[0], context=context)
-        subsidiary = company_obj.browse(cr, uid, subsidiary_id, context=None)
 
-        data_ctx = dict(context, holding_coa=True)
+        subsidiary_ids = [c.id for c in form.subsidiary_ids]
+        data_ctx = dict(context, holding_coa=True,
+                        subsidiary_ids=subsidiary_ids)
+
         holding_consol_ids = self._chart_accounts_data(
             cr, uid,
             ids,
@@ -382,6 +379,7 @@ class account_consolidation_consolidate(orm.TransientModel):
 
         period_ids = ','.join([str(p) for p in period_ids])
         consol_ids = ','.join(str(a) for a in holding_consol_ids)
+        subs_ids = ','.join(str(c) for c in subsidiary_ids)
 
         only_posted = ''
         target_move = form.target_move
@@ -405,16 +403,18 @@ class account_consolidation_consolidate(orm.TransientModel):
                            AND account_id IN (SELECT parent_id \
                                         FROM   account_account_consol_rel \
                                         WHERE  child_id IN ( %s )) \
+                           AND account_id IN ( select id from account_account where company_id in ( %s ) ) \
                            %s \
                     GROUP  BY 1) AS bal \
                    LEFT OUTER JOIN account_account_consol_rel rel \
                                 ON rel.parent_id = bal.account_id) AS final \
-            GROUP  BY child_id " % (period_ids, consol_ids, only_posted)
+            GROUP  BY child_id " % (period_ids, consol_ids,
+                                    subs_ids, only_posted)
 
         generic_move_vals = {
             'journal_id': form.journal_id.id,
             'company_id': form.company_id.id,
-            'consol_company_id': subsidiary.id,
+            'consol_company_id': False,
             'period_id': form.to_period_id.id,
             'ref': 'Consolidation'
         }
@@ -465,28 +465,14 @@ class account_consolidation_consolidate(orm.TransientModel):
 
         mod_obj = self.pool.get('ir.model.data')
         act_obj = self.pool.get('ir.actions.act_window')
-        move_obj = self.pool.get('account.move')
-        form = self.browse(cr, uid, ids[0], context=context)
 
         move_ids = []
-        ytd_move_ids = []
-        '''
-        for subsidiary in form.subsidiary_ids:
-            new_move_ids = self.consolidate_subsidiary(
-                    cr, uid, ids, subsidiary.id, context=context)
-            ytd_move_ids += new_move_ids[0]
-            move_ids += sum(new_move_ids, [])
-        '''
-        new_move_ids = self.consolidate_subsidiary(
-            cr, uid, ids, form.subsidiary_ids[0].id, context=context)
-        ytd_move_ids += new_move_ids[0]
+        # ytd_move_ids = []
+
+        # make consolidation entry for all subsidiaries
+        new_move_ids = self.consolidate(cr, uid, ids, context=context)
+        # ytd_move_ids += new_move_ids[0]
         move_ids += sum(new_move_ids, [])
-        # YTD moves have to be reversed on the next consolidation
-        move_obj.write(
-            cr, uid,
-            ytd_move_ids,
-            {'to_be_reversed': True},
-            context=context)
 
         context.update({'move_ids': move_ids})
         __, action_id = mod_obj.get_object_reference(
@@ -494,5 +480,5 @@ class account_consolidation_consolidate(orm.TransientModel):
         action = act_obj.read(cr, uid, [action_id], context=context)[0]
         action['domain'] = unicode([('id', 'in', move_ids)])
         action['name'] = _('Consolidated Entries')
-        action['context'] = unicode({'search_default_to_be_reversed': 0})
+        # action['context'] = unicode({'search_default_to_be_reversed': 0})
         return action
